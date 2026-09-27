@@ -1,0 +1,825 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SkyCast - Premium Weather Dashboard</title>
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        glass: 'rgba(255, 255, 255, 0.15)',
+                        glassBorder: 'rgba(255, 255, 255, 0.2)',
+                    },
+                    animation: {
+                        'pulse-fast': 'pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.5);
+        }
+
+        /* Glassmorphism Utilities */
+        .glass-panel {
+            background: rgba(0, 0, 0, 0.25); /* Darker base for better contrast */
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+        }
+
+        .glass-input {
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(4px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+        }
+        
+        .glass-input:focus {
+            background: rgba(255, 255, 255, 0.25);
+            outline: none;
+            border-color: rgba(255, 255, 255, 0.5);
+        }
+
+        .glass-btn {
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(4px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.2s;
+        }
+        .glass-btn:hover {
+            background: rgba(255, 255, 255, 0.25);
+            transform: translateY(-1px);
+        }
+
+        /* Background Transitions */
+        #bgImage {
+            transition: background-image 1s ease-in-out, opacity 1s ease-in-out;
+        }
+        
+        /* Toggle Switch */
+        .toggle-checkbox:checked {
+            right: 0;
+            border-color: #68D391;
+        }
+        .toggle-checkbox:checked + .toggle-label {
+            background-color: #68D391;
+        }
+        
+        /* Fade In Animation */
+        .fade-in {
+            animation: fadeIn 0.6s ease-out forwards;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(15px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Chart container adjustment */
+        canvas {
+            max-height: 180px;
+        }
+    </style>
+</head>
+<body class="min-h-screen text-white p-4 md:p-8 flex justify-center items-start overflow-x-hidden relative">
+
+    <div id="bgImage" class="fixed inset-0 bg-cover bg-center z-[-2] transition-all duration-1000"></div>
+    <div class="fixed inset-0 bg-gradient-to-br from-black/30 via-black/10 to-black/50 z-[-1] backdrop-blur-[0px]"></div>
+
+    <main class="w-full max-w-6xl mx-auto glass-panel rounded-3xl overflow-hidden min-h-[85vh] flex flex-col relative shadow-2xl">
+        
+        <header class="p-6 md:p-8 flex flex-col md:flex-row justify-between items-center gap-6 border-b border-white/10 relative z-10">
+            <div class="flex items-center gap-3">
+                <div class="bg-blue-500/20 p-2 rounded-xl border border-white/10">
+                    <i class="ph-fill ph-cloud-sun text-4xl text-yellow-300"></i>
+                </div>
+                <div>
+                    <h1 class="text-2xl font-bold tracking-tight">SkyCast</h1>
+                    <p class="text-xs text-white/50 font-medium tracking-wider">PREMIUM WEATHER</p>
+                </div>
+            </div>
+
+            <div class="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto">
+                <div class="flex items-center gap-2 bg-white/10 rounded-full p-1 px-2 border border-white/5">
+                    <span class="text-xs font-bold text-white/80 pl-1">°C</span>
+                    <button id="unitToggle" class="relative inline-flex items-center h-6 rounded-full w-11 transition-colors focus:outline-none bg-white/20">
+                        <span class="sr-only">Use Fahrenheit</span>
+                        <span id="unitToggleKnob" class="translate-x-1 inline-block w-4 h-4 transform bg-white rounded-full transition-transform duration-200 ease-in-out"></span>
+                    </button>
+                    <span class="text-xs font-bold text-white/80 pr-1">°F</span>
+                </div>
+
+                <div class="relative w-full md:w-96 group">
+                    <div class="relative flex items-center">
+                        <input type="text" id="cityInput" placeholder="Search city..." 
+                            class="glass-input w-full py-3 pl-12 pr-24 rounded-full text-white placeholder-white/60 transition-all shadow-lg text-sm font-medium">
+                        <i class="ph ph-magnifying-glass absolute left-4 text-xl text-white/70"></i>
+                        
+                        <div class="absolute right-2 flex gap-1">
+                            <button id="geoBtn" title="Locate Me" class="p-2 rounded-full hover:bg-white/20 text-white/80 hover:text-white transition-colors">
+                                <i class="ph ph-crosshair text-lg"></i>
+                            </button>
+                            <button id="searchBtn" class="bg-blue-500 hover:bg-blue-600 p-2 rounded-full transition-colors shadow-lg">
+                                <i class="ph ph-arrow-right text-white font-bold"></i>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div id="recentSearches" class="absolute top-full left-0 mt-2 w-full flex flex-wrap gap-2 px-2 opacity-0 invisible group-focus-within:opacity-100 group-focus-within:visible transition-all duration-300 z-20">
+                        </div>
+                </div>
+            </div>
+        </header>
+
+        <div id="skeletonState" class="hidden flex-1 p-6 md:p-8 gap-8 flex-col lg:flex-row animate-pulse">
+            <div class="lg:w-1/3 flex flex-col gap-6">
+                <div class="h-8 w-3/4 bg-white/10 rounded mb-2"></div>
+                <div class="h-4 w-1/2 bg-white/10 rounded mb-8"></div>
+                <div class="h-32 w-32 bg-white/10 rounded-full mx-auto mb-4"></div>
+                <div class="h-24 w-1/2 bg-white/10 rounded mx-auto mb-4"></div>
+                <div class="grid grid-cols-2 gap-4 mt-8">
+                    <div class="h-20 bg-white/10 rounded-2xl"></div>
+                    <div class="h-20 bg-white/10 rounded-2xl"></div>
+                </div>
+            </div>
+            <div class="lg:w-2/3 flex flex-col gap-6">
+                <div class="grid grid-cols-3 gap-4 mb-8">
+                    <div class="h-24 bg-white/10 rounded-2xl"></div>
+                    <div class="h-24 bg-white/10 rounded-2xl"></div>
+                    <div class="h-24 bg-white/10 rounded-2xl"></div>
+                </div>
+                <div class="h-64 bg-white/10 rounded-2xl"></div>
+                <div class="h-40 bg-white/10 rounded-2xl"></div>
+            </div>
+        </div>
+
+        <div id="errorState" class="hidden flex-1 flex flex-col items-center justify-center p-8 text-center fade-in min-h-[400px]">
+            <div class="bg-red-500/20 p-6 rounded-full mb-4 border border-red-500/30">
+                <i class="ph ph-warning-circle text-6xl text-red-300"></i>
+            </div>
+            <h2 class="text-2xl font-bold mb-2">Location not found</h2>
+            <p class="text-white/70 max-w-md">We couldn't find the location you're looking for. Please try a different city name.</p>
+        </div>
+
+        <div id="dashboard" class="flex-1 flex flex-col lg:flex-row p-6 md:p-8 gap-8 fade-in relative z-10">
+            
+            <div class="lg:w-1/3 flex flex-col gap-6 min-w-[300px]">
+                <div class="flex-1 flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center gap-2 text-white/90 mb-1">
+                            <i class="ph-fill ph-map-pin text-xl text-red-400"></i>
+                            <span id="locationName" class="text-2xl font-semibold tracking-tight shadow-black drop-shadow-md">New York, US</span>
+                        </div>
+                        <p id="localTime" class="text-sm text-white/70 font-medium pl-7">Monday, 12 Oct • 10:23 AM</p>
+                    </div>
+
+                    <div class="py-8 flex flex-col items-center text-center relative">
+                        <div class="absolute inset-0 bg-white/5 blur-3xl rounded-full transform scale-75 -z-10"></div>
+                        <i id="currentIcon" class="ph-fill ph-sun text-9xl mb-4 text-yellow-300 drop-shadow-[0_0_15px_rgba(253,224,71,0.5)]"></i>
+                        <div class="flex items-start">
+                            <h2 id="currentTemp" class="text-8xl font-bold tracking-tighter mb-2" data-value="0">72</h2>
+                            <span class="text-4xl font-light mt-4 text-white/60 temp-unit">°C</span>
+                        </div>
+                        <p id="conditionText" class="text-xl font-medium text-white/90 capitalize tracking-wide py-1 px-4 rounded-full bg-white/10 backdrop-blur-md border border-white/10">Clear Sky</p>
+                        
+                        <div class="flex gap-8 mt-6 text-sm font-medium">
+                            <div class="flex flex-col items-center">
+                                <span class="text-white/50 text-xs uppercase tracking-widest mb-1">High</span>
+                                <span class="text-xl"><span id="maxTemp" data-value="0">78</span><span class="temp-unit">°</span></span>
+                            </div>
+                            <div class="w-px bg-white/20 h-full"></div>
+                            <div class="flex flex-col items-center">
+                                <span class="text-white/50 text-xs uppercase tracking-widest mb-1">Low</span>
+                                <span class="text-xl"><span id="minTemp" data-value="0">65</span><span class="temp-unit">°</span></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="bg-white/5 p-4 rounded-2xl flex flex-col items-center justify-center gap-1 backdrop-blur-sm border border-white/5 hover:bg-white/10 transition-colors">
+                        <i class="ph ph-wind text-2xl text-blue-300"></i>
+                        <span class="text-xs text-white/50 uppercase tracking-wider">Wind</span>
+                        <span id="windSpeed" class="font-semibold text-lg">12 <span class="text-sm font-normal text-white/60">km/h</span></span>
+                    </div>
+                    <div class="bg-white/5 p-4 rounded-2xl flex flex-col items-center justify-center gap-1 backdrop-blur-sm border border-white/5 hover:bg-white/10 transition-colors">
+                        <i class="ph ph-drop text-2xl text-blue-300"></i>
+                        <span class="text-xs text-white/50 uppercase tracking-wider">Humidity</span>
+                        <span id="humidity" class="font-semibold text-lg">45<span class="text-sm font-normal text-white/60">%</span></span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="lg:w-2/3 flex flex-col gap-6 min-w-0">
+                
+                <div class="glass-panel p-6 rounded-3xl relative overflow-hidden group">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-lg font-semibold text-white/90">24h Temperature Trend</h3>
+                        <div class="text-xs text-white/50 bg-white/10 px-2 py-1 rounded">Next 24 Hours</div>
+                    </div>
+                    <div class="w-full h-[200px] relative z-10">
+                        <canvas id="tempChart"></canvas>
+                    </div>
+                    <div class="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-blue-500/10 to-transparent pointer-events-none"></div>
+                </div>
+
+                <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
+                    <div class="glass-panel p-4 rounded-2xl flex flex-col justify-between h-32">
+                        <div class="flex justify-between items-start">
+                            <span class="text-white/50 text-xs uppercase tracking-wider">UV Index</span>
+                            <i class="ph ph-sun-horizon text-xl text-orange-300"></i>
+                        </div>
+                        <div>
+                            <div class="text-2xl font-bold" id="uvIndex">0</div>
+                            <div class="text-xs text-white/60 mt-1" id="uvText">Low</div>
+                        </div>
+                        <div class="w-full h-1 bg-white/10 rounded-full mt-2">
+                            <div id="uvProgress" class="h-full bg-gradient-to-r from-green-400 to-red-500 rounded-full" style="width: 0%"></div>
+                        </div>
+                    </div>
+
+                    <div class="glass-panel p-4 rounded-2xl flex flex-col justify-between h-32">
+                        <div class="flex justify-between items-start">
+                            <span class="text-white/50 text-xs uppercase tracking-wider">Sun</span>
+                            <i class="ph ph-clock text-xl text-yellow-300"></i>
+                        </div>
+                        <div class="flex flex-col gap-1">
+                            <div class="flex items-center gap-2">
+                                <i class="ph-fill ph-arrow-fat-up text-yellow-300 text-xs"></i>
+                                <span class="text-lg font-bold" id="sunrise">06:23</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <i class="ph-fill ph-arrow-fat-down text-orange-400 text-xs"></i>
+                                <span class="text-lg font-bold" id="sunset">18:45</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="glass-panel p-4 rounded-2xl flex flex-col justify-between h-32">
+                        <div class="flex justify-between items-start">
+                            <span class="text-white/50 text-xs uppercase tracking-wider">Visibility</span>
+                            <i class="ph ph-eye text-xl text-teal-300"></i>
+                        </div>
+                        <div>
+                            <div class="text-2xl font-bold"><span id="visibility">10</span> <span class="text-sm font-normal text-white/60">km</span></div>
+                            <div class="text-xs text-white/60 mt-1">Clear view</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex-1 flex flex-col min-h-0">
+                    <div class="flex gap-6 mb-4 border-b border-white/10 pb-2">
+                        <button id="hourlyTab" class="text-white font-semibold border-b-2 border-white pb-1 transition-colors">Hourly</button>
+                        <button id="dailyTab" class="text-white/50 hover:text-white transition-colors pb-1 border-b-2 border-transparent">7 Days</button>
+                    </div>
+
+                    <div id="hourlyContainer" class="glass-panel rounded-2xl p-4 flex gap-4 overflow-x-auto pb-4 snap-x min-h-[140px]">
+                        </div>
+
+                    <div id="dailyContainer" class="hidden glass-panel rounded-2xl p-4 flex-col gap-2 overflow-y-auto max-h-[300px]">
+                        </div>
+                </div>
+
+            </div>
+        </div>
+    </main>
+
+    <footer class="fixed bottom-2 w-full text-center text-[10px] text-white/30 pointer-events-none z-0">
+        Powered by Open-Meteo • Unsplash Source • SkyCast v2.1
+    </footer>
+
+    <script>
+        // --- CONFIGURATION & STATE ---
+        const CONFIG = {
+            geoApi: 'https://geocoding-api.open-meteo.com/v1/search',
+            weatherApi: 'https://api.open-meteo.com/v1/forecast',
+            defaultCity: 'London'
+        };
+
+        let state = {
+            lat: 51.5074,
+            lon: -0.1278,
+            city: 'London',
+            country: 'GB',
+            timezone: 'Europe/London',
+            unit: 'C', // 'C' or 'F'
+            recentSearches: JSON.parse(localStorage.getItem('skycast_recents') || '[]'),
+            currentData: null,
+            chart: null
+        };
+
+        // DOM Elements
+        const els = {
+            cityInput: document.getElementById('cityInput'),
+            searchBtn: document.getElementById('searchBtn'),
+            geoBtn: document.getElementById('geoBtn'),
+            unitToggle: document.getElementById('unitToggle'),
+            unitToggleKnob: document.getElementById('unitToggleKnob'),
+            recentSearches: document.getElementById('recentSearches'),
+            
+            skeleton: document.getElementById('skeletonState'),
+            error: document.getElementById('errorState'),
+            dashboard: document.getElementById('dashboard'),
+            bgImage: document.getElementById('bgImage'),
+            
+            // Text Elements
+            locationName: document.getElementById('locationName'),
+            localTime: document.getElementById('localTime'),
+            currentTemp: document.getElementById('currentTemp'),
+            conditionText: document.getElementById('conditionText'),
+            currentIcon: document.getElementById('currentIcon'),
+            maxTemp: document.getElementById('maxTemp'),
+            minTemp: document.getElementById('minTemp'),
+            
+            // Metrics
+            windSpeed: document.getElementById('windSpeed'),
+            humidity: document.getElementById('humidity'),
+            uvIndex: document.getElementById('uvIndex'),
+            uvText: document.getElementById('uvText'),
+            uvProgress: document.getElementById('uvProgress'),
+            sunrise: document.getElementById('sunrise'),
+            sunset: document.getElementById('sunset'),
+            visibility: document.getElementById('visibility'),
+            
+            // Lists & Chart
+            hourlyContainer: document.getElementById('hourlyContainer'),
+            dailyContainer: document.getElementById('dailyContainer'),
+            tempChart: document.getElementById('tempChart'),
+            hourlyTab: document.getElementById('hourlyTab'),
+            dailyTab: document.getElementById('dailyTab')
+        };
+
+        // Weather Codes Logic
+        const weatherCodes = {
+            0: { desc: 'Clear Sky', icon: 'ph-sun', bg: 'clear' },
+            1: { desc: 'Mainly Clear', icon: 'ph-sun-dim', bg: 'sunny' },
+            2: { desc: 'Partly Cloudy', icon: 'ph-cloud-sun', bg: 'cloudy' },
+            3: { desc: 'Overcast', icon: 'ph-cloud', bg: 'overcast' },
+            45: { desc: 'Fog', icon: 'ph-cloud-fog', bg: 'fog' },
+            48: { desc: 'Depositing Rime Fog', icon: 'ph-cloud-fog', bg: 'fog' },
+            51: { desc: 'Light Drizzle', icon: 'ph-cloud-drizzle', bg: 'drizzle' },
+            53: { desc: 'Moderate Drizzle', icon: 'ph-cloud-drizzle', bg: 'rain' },
+            55: { desc: 'Dense Drizzle', icon: 'ph-cloud-drizzle', bg: 'heavy_rain' },
+            61: { desc: 'Slight Rain', icon: 'ph-cloud-rain', bg: 'rain' },
+            63: { desc: 'Moderate Rain', icon: 'ph-cloud-rain', bg: 'rain' },
+            65: { desc: 'Heavy Rain', icon: 'ph-cloud-rain', bg: 'storm' },
+            71: { desc: 'Slight Snow', icon: 'ph-snowflake', bg: 'snow' },
+            73: { desc: 'Moderate Snow', icon: 'ph-snowflake', bg: 'snow' },
+            75: { desc: 'Heavy Snow', icon: 'ph-snowflake', bg: 'blizzard' },
+            80: { desc: 'Rain Showers', icon: 'ph-cloud-rain', bg: 'rain' },
+            95: { desc: 'Thunderstorm', icon: 'ph-cloud-lightning', bg: 'thunderstorm' },
+        };
+
+        const getWeatherInfo = (code) => weatherCodes[code] || { desc: 'Unknown', icon: 'ph-question', bg: 'default' };
+
+        // --- HELPER FUNCTIONS ---
+
+        function toFahrenheit(c) {
+            return (c * 9/5) + 32;
+        }
+
+        function formatTemp(c) {
+            const val = state.unit === 'F' ? toFahrenheit(c) : c;
+            return Math.round(val);
+        }
+
+        function updateUnits() {
+            if (!state.currentData) return;
+            
+            // Update Toggle UI
+            if (state.unit === 'F') {
+                els.unitToggleKnob.classList.add('translate-x-6');
+                els.unitToggleKnob.classList.remove('translate-x-1');
+                els.unitToggle.classList.add('bg-green-400');
+                els.unitToggle.classList.remove('bg-white/20');
+            } else {
+                els.unitToggleKnob.classList.add('translate-x-1');
+                els.unitToggleKnob.classList.remove('translate-x-6');
+                els.unitToggle.classList.remove('bg-green-400');
+                els.unitToggle.classList.add('bg-white/20');
+            }
+
+            // Update Text Units
+            document.querySelectorAll('.temp-unit').forEach(el => el.textContent = `°${state.unit}`);
+            
+            // Update Values stored in data attributes or re-render
+            updateUI(state.currentData, state);
+        }
+
+        function setBackground(weatherType, isNight) {
+            // FIX: Replaced Unsplash source with reliable CSS Gradients
+            // This ensures the background always loads instantly and matches the vibe
+            
+            const gradients = {
+                'clear': isNight 
+                    ? 'linear-gradient(to bottom right, #0f172a, #312e81)' // Deep Night
+                    : 'linear-gradient(to bottom right, #3b82f6, #06b6d4)', // Bright Blue
+                'sunny': isNight 
+                    ? 'linear-gradient(to bottom right, #0f172a, #312e81)' 
+                    : 'linear-gradient(to bottom right, #f59e0b, #f97316, #06b6d4)', // Sun warm
+                'cloudy': isNight 
+                    ? 'linear-gradient(to bottom right, #111827, #374151)' // Dark Grey
+                    : 'linear-gradient(to bottom right, #64748b, #94a3b8)', // Grey Blue
+                'overcast': isNight 
+                    ? 'linear-gradient(to bottom right, #1f2937, #111827)' 
+                    : 'linear-gradient(to bottom right, #475569, #64748b)',
+                'fog': 'linear-gradient(to bottom right, #3f3f46, #71717a)',
+                'rain': isNight 
+                    ? 'linear-gradient(to bottom right, #0f172a, #1e293b)' 
+                    : 'linear-gradient(to bottom right, #334155, #475569, #3b82f6)',
+                'heavy_rain': 'linear-gradient(to bottom right, #1e293b, #0f172a)',
+                'storm': 'linear-gradient(to bottom right, #111827, #312e81, #4c1d95)',
+                'snow': isNight 
+                    ? 'linear-gradient(to bottom right, #1e293b, #93c5fd)' 
+                    : 'linear-gradient(to bottom right, #bfdbfe, #60a5fa, #eff6ff)',
+                'blizzard': 'linear-gradient(to bottom right, #93c5fd, #dbeafe)',
+                'default': 'linear-gradient(to bottom right, #2563eb, #4f46e5)'
+            };
+
+            let selected = gradients[weatherType] || gradients['default'];
+            els.bgImage.style.backgroundImage = selected;
+            els.bgImage.classList.remove('opacity-0');
+        }
+
+        function renderChart(hourlyData, timezone) {
+            const ctx = els.tempChart.getContext('2d');
+            
+            // Prepare Data: Next 24 Hours
+            // Filter to start from current hour
+            const now = new Date();
+            const nowISO = now.toISOString().slice(0, 13);
+            
+            let startIndex = hourlyData.time.findIndex(t => t.startsWith(nowISO));
+            if (startIndex === -1) startIndex = 0;
+
+            const labels = hourlyData.time.slice(startIndex, startIndex + 24).map(t => {
+                const date = new Date(t);
+                return new Intl.DateTimeFormat('en-US', { hour: 'numeric', hour12: true }).format(date);
+            });
+            const temps = hourlyData.temperature_2m.slice(startIndex, startIndex + 24).map(t => formatTemp(t));
+
+            // Gradient Fill
+            let gradient = ctx.createLinearGradient(0, 0, 0, 200);
+            gradient.addColorStop(0, 'rgba(255, 255, 255, 0.4)');
+            gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+
+            if (state.chart) state.chart.destroy();
+
+            Chart.defaults.color = 'rgba(255, 255, 255, 0.6)';
+            Chart.defaults.font.family = 'Inter';
+
+            state.chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Temperature',
+                        data: temps,
+                        borderColor: '#ffffff',
+                        backgroundColor: gradient,
+                        borderWidth: 2,
+                        tension: 0.4, // Smooth spline
+                        fill: true,
+                        pointBackgroundColor: '#ffffff',
+                        pointRadius: 0,
+                        pointHoverRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: 'rgba(0, 0, 0, 0.7)',
+                            titleColor: '#fff',
+                            bodyColor: '#fff',
+                            padding: 10,
+                            displayColors: false,
+                            callbacks: {
+                                label: (context) => ` ${context.parsed.y}°${state.unit}`
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: { display: false, drawBorder: false },
+                            ticks: { maxTicksLimit: 6, color: 'rgba(255,255,255,0.5)' }
+                        },
+                        y: {
+                            display: false // Hide Y axis for clean look
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateRecentSearches(newCity) {
+            // Remove duplicates
+            state.recentSearches = state.recentSearches.filter(c => c.toLowerCase() !== newCity.toLowerCase());
+            // Add to front
+            state.recentSearches.unshift(newCity);
+            // Limit to 3
+            if (state.recentSearches.length > 3) state.recentSearches.pop();
+            
+            localStorage.setItem('skycast_recents', JSON.stringify(state.recentSearches));
+            renderRecentSearches();
+        }
+
+        function renderRecentSearches() {
+            els.recentSearches.innerHTML = '';
+            state.recentSearches.forEach(city => {
+                const btn = document.createElement('button');
+                btn.className = 'glass-btn px-3 py-1 rounded-full text-xs text-white/80 hover:text-white';
+                btn.textContent = city;
+                btn.addEventListener('click', () => {
+                    els.cityInput.value = city;
+                    handleSearch(city);
+                });
+                els.recentSearches.appendChild(btn);
+            });
+        }
+
+        // --- CORE LOGIC ---
+
+        async function handleSearch(city) {
+            if (!city) return;
+            
+            // UI States
+            els.skeleton.classList.remove('hidden');
+            els.dashboard.classList.add('hidden');
+            els.error.classList.add('hidden');
+            els.recentSearches.classList.remove('group-focus-within:opacity-100', 'group-focus-within:visible'); // Hide dropdown
+
+            try {
+                // 1. Geocoding
+                const geoRes = await fetch(`${CONFIG.geoApi}?name=${city}&count=1&language=en&format=json`);
+                const geoData = await geoRes.json();
+                
+                if (!geoData.results || geoData.results.length === 0) throw new Error('City not found');
+                const loc = geoData.results[0];
+                
+                state.lat = loc.latitude;
+                state.lon = loc.longitude;
+                state.city = loc.name;
+                state.country = loc.country_code;
+                state.timezone = loc.timezone;
+
+                // 2. Weather Fetch
+                const url = `${CONFIG.weatherApi}?latitude=${state.lat}&longitude=${state.lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,surface_pressure,wind_speed_10m&hourly=temperature_2m,weather_code,visibility&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,uv_index_max&timezone=auto&forecast_days=7`;
+                const weatherRes = await fetch(url);
+                state.currentData = await weatherRes.json();
+
+                // 3. Update UI
+                updateUI(state.currentData, state);
+                updateRecentSearches(state.city);
+                
+                // 4. Update Background (Using Gradient Fix)
+                const code = state.currentData.current.weather_code;
+                const info = getWeatherInfo(code);
+                const isNight = state.currentData.current.is_day === 0;
+                setBackground(info.bg, isNight);
+
+                // 5. Reset Scroll
+                els.hourlyContainer.scrollLeft = 0;
+
+                // Success
+                els.skeleton.classList.add('hidden');
+                els.dashboard.classList.remove('hidden');
+
+            } catch (err) {
+                console.error(err);
+                els.skeleton.classList.add('hidden');
+                els.error.classList.remove('hidden');
+            }
+        }
+
+        async function handleGeoLocation() {
+            if (!navigator.geolocation) {
+                alert("Geolocation is not supported by your browser.");
+                return;
+            }
+
+            els.skeleton.classList.remove('hidden');
+            els.dashboard.classList.add('hidden');
+            els.error.classList.add('hidden');
+
+            navigator.geolocation.getCurrentPosition(async (position) => {
+                try {
+                    const lat = position.coords.latitude;
+                    const lon = position.coords.longitude;
+                    
+                    // Reverse Geo to get City Name
+                    const geoRes = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`);
+                    const geoData = await geoRes.json();
+                    
+                    // Fallback names if specific city not found
+                    const cityName = geoData.city || geoData.locality || "Your Location";
+                    const countryCode = geoData.countryCode || "";
+
+                    state.lat = lat;
+                    state.lon = lon;
+                    state.city = cityName;
+                    state.country = countryCode;
+                    
+                    // Proceed to fetch weather with coords
+                    const weatherUrl = `${CONFIG.weatherApi}?latitude=${state.lat}&longitude=${state.lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,surface_pressure,wind_speed_10m&hourly=temperature_2m,weather_code,visibility&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,uv_index_max&timezone=auto&forecast_days=7`;
+                    
+                    const weatherRes = await fetch(weatherUrl);
+                    state.currentData = await weatherRes.json();
+
+                    state.timezone = state.currentData.timezone; // OpenMeteo gives timezone
+
+                    updateUI(state.currentData, state);
+                    
+                    // Update Background
+                    const code = state.currentData.current.weather_code;
+                    const info = getWeatherInfo(code);
+                    const isNight = state.currentData.current.is_day === 0;
+                    setBackground(info.bg, isNight);
+
+                    els.skeleton.classList.add('hidden');
+                    els.dashboard.classList.remove('hidden');
+
+                } catch (e) {
+                    console.error(e);
+                    els.skeleton.classList.add('hidden');
+                    els.error.classList.remove('hidden');
+                }
+            }, (err) => {
+                // Better error handling for geolocation
+                console.warn(err);
+                alert("Unable to retrieve location. Please check browser permissions or ensure you are using HTTPS.");
+                els.skeleton.classList.add('hidden');
+                els.dashboard.classList.remove('hidden');
+            });
+        }
+
+        function updateUI(data, location) {
+            const current = data.current;
+            const today = data.daily;
+            const weatherInfo = getWeatherInfo(current.weather_code);
+            const isNight = current.is_day === 0;
+
+            // Header
+            els.locationName.textContent = `${location.city}${location.country ? ', ' + location.country : ''}`;
+            const date = new Date();
+            const timeOpts = { weekday: 'long', day: 'numeric', month: 'short', hour: 'numeric', minute: 'numeric', timeZone: location.timezone };
+            els.localTime.textContent = new Intl.DateTimeFormat('en-US', timeOpts).format(date);
+
+            // Hero
+            els.currentTemp.textContent = formatTemp(current.temperature_2m);
+            els.conditionText.textContent = weatherInfo.desc;
+            
+            let iconClass = weatherInfo.icon;
+            if (isNight && iconClass.includes('sun')) iconClass = iconClass.replace('sun', 'moon');
+            els.currentIcon.className = `ph-fill ${iconClass} text-9xl mb-4 drop-shadow-[0_0_15px_rgba(255,255,255,0.3)] ${isNight ? 'text-blue-200' : 'text-yellow-300'}`;
+
+            els.maxTemp.textContent = formatTemp(today.temperature_2m_max[0]);
+            els.minTemp.textContent = formatTemp(today.temperature_2m_min[0]);
+
+            // Metrics
+            els.windSpeed.innerHTML = `${current.wind_speed_10m} <span class="text-sm font-normal text-white/60">km/h</span>`;
+            els.humidity.innerHTML = `${current.relative_humidity_2m}<span class="text-sm font-normal text-white/60">%</span>`;
+            
+            // UV
+            const uv = today.uv_index_max[0];
+            els.uvIndex.textContent = uv.toFixed(1);
+            els.uvProgress.style.width = `${Math.min((uv / 11) * 100, 100)}%`;
+            els.uvText.textContent = uv > 10 ? 'Extreme' : uv > 7 ? 'Very High' : uv > 5 ? 'High' : uv > 2 ? 'Moderate' : 'Low';
+
+            // Sun & Vis
+            els.sunrise.textContent = new Intl.DateTimeFormat('en-US', {hour:'numeric', minute:'numeric', timeZone: location.timezone}).format(new Date(today.sunrise[0]));
+            els.sunset.textContent = new Intl.DateTimeFormat('en-US', {hour:'numeric', minute:'numeric', timeZone: location.timezone}).format(new Date(today.sunset[0]));
+            
+            // Approximate visibility from hourly (take first)
+            const visKm = (data.hourly.visibility[0] / 1000).toFixed(1);
+            els.visibility.textContent = visKm;
+
+            // Chart
+            renderChart(data.hourly, location.timezone);
+
+            // Hourly List
+            els.hourlyContainer.innerHTML = '';
+            // Find current hour index
+            const nowISO = new Date().toISOString().slice(0, 13);
+            let startIndex = data.hourly.time.findIndex(t => t.startsWith(nowISO));
+            if (startIndex === -1) startIndex = 0;
+
+            for(let i = startIndex; i < startIndex + 24; i++) {
+                if (!data.hourly.time[i]) break;
+                const t = data.hourly.time[i];
+                const temp = data.hourly.temperature_2m[i];
+                const code = data.hourly.weather_code[i];
+                const info = getWeatherInfo(code);
+                
+                const timeStr = new Intl.DateTimeFormat('en-US', { hour: 'numeric', timeZone: location.timezone }).format(new Date(t));
+
+                const el = document.createElement('div');
+                el.className = 'flex flex-col items-center min-w-[70px] p-3 rounded-xl bg-white/5 hover:bg-white/10 transition-colors snap-center border border-white/5';
+                el.innerHTML = `
+                    <span class="text-xs text-white/60 whitespace-nowrap mb-2">${timeStr}</span>
+                    <i class="ph-fill ${info.icon} text-2xl mb-2 text-white/90"></i>
+                    <span class="font-bold text-lg">${formatTemp(temp)}°</span>
+                `;
+                els.hourlyContainer.appendChild(el);
+            }
+
+            // Daily List
+            els.dailyContainer.innerHTML = '';
+            for(let i = 0; i < today.time.length; i++) {
+                const dayName = i === 0 ? 'Today' : new Intl.DateTimeFormat('en-US', { weekday: 'short' }).format(new Date(today.time[i]));
+                const max = today.temperature_2m_max[i];
+                const min = today.temperature_2m_min[i];
+                const code = today.weather_code[i];
+                const info = getWeatherInfo(code);
+
+                const el = document.createElement('div');
+                el.className = 'flex items-center justify-between p-3 rounded-xl bg-white/5 hover:bg-white/10 transition-colors border border-white/5';
+                el.innerHTML = `
+                    <span class="w-16 font-medium text-white/90">${dayName}</span>
+                    <div class="flex items-center gap-3 flex-1 justify-center">
+                        <i class="ph-fill ${info.icon} text-xl text-blue-200"></i>
+                        <span class="text-xs text-white/50 hidden sm:block">${info.desc}</span>
+                    </div>
+                    <div class="flex gap-4 w-24 justify-end">
+                        <span class="font-bold">${formatTemp(max)}°</span>
+                        <span class="text-white/50">${formatTemp(min)}°</span>
+                    </div>
+                `;
+                els.dailyContainer.appendChild(el);
+            }
+        }
+
+        // --- EVENT LISTENERS ---
+
+        els.searchBtn.addEventListener('click', () => handleSearch(els.cityInput.value));
+        els.cityInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') handleSearch(els.cityInput.value);
+        });
+
+        els.geoBtn.addEventListener('click', handleGeoLocation);
+
+        els.unitToggle.addEventListener('click', () => {
+            state.unit = state.unit === 'C' ? 'F' : 'C';
+            updateUnits();
+        });
+
+        els.hourlyTab.addEventListener('click', () => {
+            els.hourlyTab.className = 'text-white font-semibold border-b-2 border-white pb-1 transition-colors';
+            els.dailyTab.className = 'text-white/50 hover:text-white transition-colors pb-1 border-b-2 border-transparent';
+            els.hourlyContainer.classList.remove('hidden');
+            els.hourlyContainer.classList.add('flex');
+            els.dailyContainer.classList.add('hidden');
+            els.dailyContainer.classList.remove('flex');
+        });
+
+        els.dailyTab.addEventListener('click', () => {
+            els.dailyTab.className = 'text-white font-semibold border-b-2 border-white pb-1 transition-colors';
+            els.hourlyTab.className = 'text-white/50 hover:text-white transition-colors pb-1 border-b-2 border-transparent';
+            els.dailyContainer.classList.remove('hidden');
+            els.dailyContainer.classList.add('flex');
+            els.hourlyContainer.classList.add('hidden');
+            els.hourlyContainer.classList.remove('flex');
+        });
+
+        // Init
+        renderRecentSearches();
+        handleSearch(CONFIG.defaultCity);
+
+    </script>
+</body>
+</html>
